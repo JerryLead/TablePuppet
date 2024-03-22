@@ -1,0 +1,27 @@
+{
+    "task": "regression",
+    "N": 3,
+    "d_c": 1,
+    "original": {
+        "ratings": 850177,
+        "movies_genres_split": 6408,
+        "users": 6040
+    },
+    "joined": {
+        "ratings": 850177,
+        "movies_genres_split": 6170,
+        "users": 6040
+    },
+    "feature_number": {
+        "ratings": 4,
+        "movies_genres_split": 52,
+        "users": 24
+    },
+    "sigma_model_size": {
+        "Linear": 83,
+        "NN": 1379
+    },
+    "M": 1786513,
+    "orginal_sigma_m_i": 862625,
+    "joined_sigma_m_i": 862387
+}

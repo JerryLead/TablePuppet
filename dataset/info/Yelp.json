@@ -1,0 +1,27 @@
+{
+    "task": "classification",
+    "N": 3,
+    "d_c": 5,
+    "original": {
+        "review": 3207696,
+        "restaurant": 34987,
+        "user": 1158106
+    },
+    "joined": {
+        "review": 3207696,
+        "restaurant": 34987,
+        "user": 1158106
+    },
+    "feature_number": {
+        "review": 775,
+        "restaurant": 3,
+        "user": 20
+    },
+    "sigma_model_size": {
+        "Linear": 4005,
+        "NN": 13071
+    },
+    "M": 3207696,
+    "orginal_sigma_m_i": 4400789,
+    "joined_sigma_m_i": 4400789
+}

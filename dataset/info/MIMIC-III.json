@@ -1,0 +1,33 @@
+{
+    "task": "classification",
+    "N": 5,
+    "d_c": 2,
+    "original": {
+        "stays": 52302,
+        "patients": 46520,
+        "admissions": 58976,
+        "diagnoses": 58925,
+        "events": 3431622
+    },
+    "joined": {
+        "stays": 35381,
+        "patients": 29081,
+        "admissions": 35381,
+        "diagnoses": 35381,
+        "events": 2908992
+    },
+    "feature_number": {
+        "stays": 51,
+        "patients": 2,
+        "admissions": 42,
+        "diagnoses": 129,
+        "events": 717
+    },
+    "sigma_model_size": {
+        "Linear": 1892,
+        "NN": 15306
+    },
+    "M": 2908992,
+    "orginal_sigma_m_i": 3648345,
+    "joined_sigma_m_i": 3044216
+}
