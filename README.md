@@ -38,7 +38,7 @@ The join key for each table is listed below:
 
 ## Run
 
-### RFL-ADMM-V
+### TP-Join-ADMM
 
 ```sh
 python run/admm.py <path to dataset> --dataset=<dataset name>
@@ -46,9 +46,9 @@ python run/admm.py <path to dataset> --dataset=<dataset name>
 
 The \<path to dataset> argument should be the directory path where the *train* directory and *test* directory are located.
 
-### RFL-ADMM
+### TP-UCQ-ADMM
 
-In the hybrid scenario, the number of horizontally split parts can be specified using the *client_num* argument, as shown below:
+In the join-union scenario, the number of horizontally split parts can be specified using the *client_num* argument, as shown below:
 
 ```sh
 python run/admm.py <path to dataset> --dataset=<dataset name> --client_num=2
@@ -56,16 +56,10 @@ python run/admm.py <path to dataset> --dataset=<dataset name> --client_num=2
 
 ### VFL-ADMM
 
-VFL-ADMM can be regarded as VFL-ADMM-Opt without computation reduction and communication reduction. For simplicity, we align the client data (expanding it to N) and represent G as [[0], [1], ..., [M]] for the implementation of VFL-ADMM.
+VFL-ADMM can be regarded as TP-Join-ADMM without computation reduction and communication reduction. For simplicity, we align the client data (expanding it to N) and represent G as [[0], [1], ..., [M]] for the implementation of VFL-ADMM.
 
 ```sh
 python run/admm.py <path to dataset> --dataset=<dataset name> --simulate_VFL_ADMM=True
-```
-
-### RFL-SGD-V/RFL-SGD
-
-```sh
-python run/sgd.py <path to dataset> --dataset=<dataset name> --opt
 ```
 
 ### VFL-SGD
@@ -113,12 +107,12 @@ For SGD:
 lr:
     values: [0.01, 0.05, 0.1, 0.5]
 batch_size:
-    values: [10240]
+    values: [1024, 10240]
 model:
     values: [Linear, MLP]
 ```
 
-We tested [RFL-ADMM-V, RFL-ADMM, RFL-SGD-V, RFL-SGD, VFL-ADMM, VFL-SGD, VFL-SGD-HD] in both DP(only feature DP and both feature DP and label DP) and non DP scenarios.
+We tested [VFL-SGD, VFL-ADMM, TP-Join-ADMM, TP-UCQ-ADMM] in both DP(only feature DP and both feature DP and label DP) and non DP scenarios.
 
 ### Convergence Rates
 
@@ -126,39 +120,39 @@ We tested [RFL-ADMM-V, RFL-ADMM, RFL-SGD-V, RFL-SGD, VFL-ADMM, VFL-SGD, VFL-SGD-
 
 The figure below illustrates the convergence rates of different SGD/ADMM algorithms atop TablePuppet without privacy guarantee. In this non-DP scenario, all the algorithms can converge to model accuracy comparable to the baselines, which demonstrates the effectiveness of TablePuppet.
 
-|                ![convergence_rates_VFL(non-DP)](./image/convergence_rates_VFL(non-DP).png)                 |
-| :--------------------------------------------------------------------------------------------------------: |
-|             ![convergence_rates_Hybrid(non-DP)](./image/convergence_rates_Hybrid(non-DP).png)              |
-| *Figure 1: The convergence rates of different algorithms for Vertical/Hybrid FL without privacy guarantee* |
+|                         ![convergence_rates_VFL(non-DP)](./image/convergence_rates_VFL(non-DP).png)                          |
+| :--------------------------------------------------------------------------------------------------------------------------: |
+|                      ![convergence_rates_Hybrid(non-DP)](./image/convergence_rates_Hybrid(non-DP).png)                       |
+| *Figure 1: The convergence rates of different algorithms for  join-only and join-union scenarios without privacy guarantees* |
 
 #### Results with privacy guarantee
 
 By introducing DP to both labels and model training in TablePuppet, the model accuracy of SGD/ADMM drops compared to the non-DP centralized baselines. However, with model accuracy drops, these algorithms gain privacy protection against feature and label leakages. In this DP scenario, we can still observe that all algorithms atop TablePuppet can converge to similar model accuracy.
 
-|                   ![convergence_rates_VFL(DP)](./image/convergence_rates_VFL(DP).png)                   |
-| :-----------------------------------------------------------------------------------------------------: |
-|                ![convergence_rates_Hybrid(DP)](./image/convergence_rates_Hybrid(DP).png)                |
-| *Figure 2: The convergence rates of different algorithms for Vertical/Hybrid FL with privacy guarantee* |
+|                           ![convergence_rates_VFL(DP)](./image/convergence_rates_VFL(DP).png)                            |
+| :----------------------------------------------------------------------------------------------------------------------: |
+|                        ![convergence_rates_Hybrid(DP)](./image/convergence_rates_Hybrid(DP).png)                         |
+| *Figure 2: The convergence rates of different algorithms for join-only and join-union scenarios with privacy guarantees* |
 
 ### Communication Time
 
-We compare model accuracy vs. communication time, among SGD and ADMM algorithms for both vertical and hybrid FL. We presume that the server and clients are distributed in US/UK, and we use two network settings, US-UK and US-US with different latency and bandwidth, to measure the communication between the server and clients. We measure the communication time via “*latency + communication_data_size / bandwidth*” for each epoch. Note that VFL-SGD results are not fully plotted in the figure, due to the long communication time caused by too many communication rounds per epoch. In addition, we observe similar results in both non-DP and DP scenarios, which indicates that privacy guarantee does not affect the number of communication rounds and cost.
+We compare model accuracy vs. communication time, among SGD and ADMM algorithms in both join-only and join-union scenarios. We presume that the server and clients are distributed in US/UK, and we use two network settings, US-UK and US-US with different latency and bandwidth, to measure the communication between the server and clients. We measure the communication time via “*latency + communication_data_size / bandwidth*” for each epoch. Note that VFL-SGD results are not fully plotted in the figure, due to the long communication time caused by too many communication rounds per epoch. In addition, we observe similar results in both non-DP and DP scenarios, which indicates that privacy guarantee does not affect the number of communication rounds and cost.
 
-|                        ![communication_time_VFL_US-UK](./image/communication_time_VFL_US-UK.png)                         |
-| :----------------------------------------------------------------------------------------------------------------------: |
-| *Figure 3: The model accuracy vs. communication time for Vertical FL (US-UK with latency = 136ms, bandwidth = 0.42Gb/s)* |
-
-|                        ![communication_time_VFL_US-US](./image/communication_time_VFL_US-US.png)                        |
-| :---------------------------------------------------------------------------------------------------------------------: |
-| *Figure 4: The model accuracy vs. communication time for Vertical FL (US-US with latency = 67ms, bandwidth = 1.15Gb/s)* |
-
-|                    ![communication_time_Hybrid_US-UK](./image/communication_time_Hybrid_US-UK.png)                     |
+|                       ![communication_time_VFL_US-UK](./image/communication_time_VFL_US-UK.png)                        |
 | :--------------------------------------------------------------------------------------------------------------------: |
-| *Figure 5: The model accuracy vs. communication time for Hybrid FL (US-UK with latency = 136ms, bandwidth = 0.42Gb/s)* |
+| *Figure 3: The model accuracy vs. communication time for join-only (US-UK with latency = 136ms, bandwidth = 0.42Gb/s)* |
 
-|                    ![communication_time_Hybrid_US-US](./image/communication_time_Hybrid_US-US.png)                    |
-| :-------------------------------------------------------------------------------------------------------------------: |
-| *Figure 6: The model accuracy vs. communication time for Hybrid FL (US-US with latency = 67ms, bandwidth = 1.15Gb/s)* |
+|                      ![communication_time_VFL_US-US](./image/communication_time_VFL_US-US.png)                       |
+| :------------------------------------------------------------------------------------------------------------------: |
+| *Figure 4:The model accuracy vs. communication time for join-only (US-US with latency = 67ms, bandwidth = 1.15Gb/s)* |
+
+|                     ![communication_time_Hybrid_US-UK](./image/communication_time_Hybrid_US-UK.png)                     |
+| :---------------------------------------------------------------------------------------------------------------------: |
+| *Figure 5: The model accuracy vs. communication time for join-union (US-UK with latency = 136ms, bandwidth = 0.42Gb/s)* |
+
+|                    ![communication_time_Hybrid_US-US](./image/communication_time_Hybrid_US-US.png)                     |
+| :--------------------------------------------------------------------------------------------------------------------: |
+| *Figure 6: The model accuracy vs. communication time for join-union (US-US with latency = 67ms, bandwidth = 1.15Gb/s)* |
 
 ## How to test on a new dataset
 
