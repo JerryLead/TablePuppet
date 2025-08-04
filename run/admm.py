@@ -15,6 +15,8 @@ from dataset import MIMIC, Yelp, MovieLens_1M, MIMIC_joint
 from client.admm import Worker
 from server.admm import Server
 
+import ray
+
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -64,6 +66,7 @@ def main():
 
 
 if __name__ == "__main__":
+    ray.init(address="auto")
     parser = argparse.ArgumentParser(description="Run RFL-ADMM")
     parser.add_argument("data_path", type=str, help="Data path")
     parser.add_argument(
