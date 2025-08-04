@@ -15,7 +15,10 @@ from model import Linear, MLP, model_to_vector
 from dataset import CustomDataset
 import client.base
 
+import ray
 
+
+@ray.remote(num_gpus=0.2)
 class Worker(client.base.Worker):
     def init(self):
         self.m = self.train_data.shape[0]

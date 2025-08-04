@@ -8,6 +8,10 @@ import numpy as np
 
 from model import Linear, MLP
 
+from util.ray_utils import ray_group_call, ray_group_call_multiargs
+
+import ray
+
 
 class Server(server.base.Server):
     def init(self):
@@ -16,26 +20,18 @@ class Server(server.base.Server):
             if self.task == "classification"
             else torch.nn.MSELoss()
         )
-        for i, worker in enumerate(self.workers):
-            # if self.args.opt:
-            #     self.G = self.original_G.copy()
-            #     self.test_G = self.original_test_G.copy()
-            #     self.G[i], self.test_G[i] = worker.align(
-            #         self.G[i],
-            #         self.test_G[i],
-            #     )
-            # else:
-            self.G = self.aligned_G.copy()
-            self.test_G = self.aligned_test_G.copy()
-            self.G[i], self.test_G[i] = worker.align(
-                self.G[i],
-                self.test_G[i],
-                train_idx=self.f[:, i + 1],
-                test_idx=self.test_f[:, i + 1],
-            )
-            worker.init()
-        # worker.align(self.f[:, i + 1], self.test_f[:, i + 1])
-        # worker.init()
+        self.G = self.aligned_G.copy()
+        self.test_G = self.aligned_test_G.copy()
+
+        align_args = [
+            (self.G[i], self.test_G[i], self.f[:, i + 1], self.test_f[:, i + 1])
+            for i in range(len(self.workers))
+        ]
+        align_results = ray_group_call_multiargs(self.workers, "align", align_args)
+        self.G, self.test_G = zip(*align_results)
+        self.G = list(self.G)
+        self.test_G = list(self.test_G)
+        ray_group_call(self.workers, "init")
         self.train_iterations = math.ceil(self.M / self.args.batch_size)
         self.test_iterations = math.ceil(self.test_M / self.args.batch_size)
         if isinstance(self.b, np.ndarray):
@@ -46,8 +42,12 @@ class Server(server.base.Server):
             self.b, self.test_b = self.b.double(), self.test_b.double()
         # self.b, self.test_b = self.b.to(self.device), self.test_b.to(self.device)
         if self.args.train_after_joined:
-            self.train_data = np.hstack([worker.train_data for worker in self.workers])
-            self.test_data = np.hstack([worker.test_data for worker in self.workers])
+            train_datas = ray_group_call(self.workers, "get_train_data")
+            test_datas = ray_group_call(self.workers, "get_test_data")
+
+            self.train_data = np.hstack(train_datas)
+            self.test_data = np.hstack(test_datas)
+
             self.train_dataset = TensorDataset(
                 torch.from_numpy(self.train_data), self.b
             )
@@ -138,8 +138,7 @@ class Server(server.base.Server):
                 self.train_metric = BinaryAUROC()
             else:
                 self.acc = 0
-        for worker in self.workers:
-            worker.prepare_dataloader_iter()
+        ray_group_call(self.workers, "prepare_dataloader_iter")
         for batch_id in range(self.train_iterations):
             sample_start_idx = batch_id * self.args.batch_size
             sample_end_idx = (batch_id + 1) * self.args.batch_size
@@ -147,33 +146,44 @@ class Server(server.base.Server):
             batch_f = torch.from_numpy(self.f[sample_start_idx:sample_end_idx, :]).to(
                 self.device
             )
-            loss = self._process_batch(label, batch_f=batch_f)
+            loss, T_x = self._process_batch(label, batch_f=batch_f)
             loss.backward()
-            for worker in self.workers:
-                if self.args.use_bcd:
-                    worker.bcd_one_step_backward()
-                else:
-                    worker.one_step_backward()
+            # Here we need to pass grad to worker
+            grad_args = [(t.grad,) for t in T_x]
+            ray_group_call_multiargs(self.workers, "receive_embedding_grad", grad_args)
+            if self.args.use_bcd:
+                ray_group_call(self.workers, "bcd_one_step_backward")
+            else:
+                ray_group_call(self.workers, "one_step_backward")
 
     def _process_batch(self, label, mode="train", batch_f=None):
         if self.task == "regression":
             label = label.reshape(-1, 1).double()
         T_x = []
-        for i in range(self.N):
-            if self.args.opt:
-                unique_values, inverse_indices = torch.unique(
-                    batch_f[:, i + 1], return_inverse=True
-                )
-                self.workers[i].prepare_batch(mode, idx=unique_values)
-                self.workers[i].one_step_forward(mode)
-                embedding = self.workers[i].embedding
-                mapped_embedding = torch.index_select(embedding, 0, inverse_indices)
-                T_x.append(mapped_embedding)
-                self.workers[i].inverse_indices = inverse_indices
-            else:
-                self.workers[i].prepare_batch(mode)
-                self.workers[i].one_step_forward(mode)
-                T_x.append(self.workers[i].embedding)
+        
+        if self.args.opt:
+            unique_values_list = []
+            inverse_indices_list = []
+            for i in range(self.N):
+                unique_values, inverse_indices = torch.unique(batch_f[:, i + 1], return_inverse=True)
+                unique_values_list.append(unique_values)
+                inverse_indices_list.append(inverse_indices)
+            prep_args = [(mode, unique_values_list[i]) for i in range(self.N)]
+            ray_group_call_multiargs(self.workers, "prepare_batch", prep_args)
+            ray_group_call(self.workers, "one_step_forward", mode)
+            embeddings = ray_group_call(self.workers, "get_embedding")
+            T_x = [
+                torch.index_select(torch.as_tensor(embeddings[i]), 0, inverse_indices_list[i])
+                for i in range(self.N)
+            ]
+            set_args = [(inverse_indices_list[i],) for i in range(self.N)]
+            ray_group_call_multiargs(self.workers, "set_inverse_indices", set_args)
+
+        else:
+            ray_group_call(self.workers, "prepare_batch", mode)
+            ray_group_call(self.workers, "one_step_forward", mode)
+            T_x = ray_group_call(self.workers, "get_embedding")
+
         h = torch.sum(torch.stack(T_x), dim=0)
         loss = self.loss(h, label)
         if mode == "train":
@@ -192,14 +202,7 @@ class Server(server.base.Server):
                     self.acc += (predicted == label).sum().item() / self.M
                 else:
                     self.test_acc += (predicted == label).sum().item() / self.test_M
-        # if mode == "train":
-        #     loss.backward()
-        #     for worker in self.workers:
-        #         if self.args.opt:
-        #             worker.one_step_backward(inverse_indices)
-        #         else:
-        #             worker.one_step_backward()
-        return loss
+        return loss, T_x
 
     def validate(self, mode="train"):
         if mode == "train":

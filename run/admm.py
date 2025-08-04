@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import wandb
 import argparse
 import yaml
@@ -53,7 +55,7 @@ def main():
         wandb.define_metric("privacy_budget", step_metric="epoch", summary="last")
 
     logger.info(config)
-    server.set_args(config)
+    server.set_args(args = SimpleNamespace(**dict(config)))
     server.train(config.communication_round)
 
     end_time = time.time()
@@ -197,7 +199,7 @@ if __name__ == "__main__":
         dataset = MIMIC_joint()
 
     table_names = list(dataset.table_name_join_key_mapping.keys())
-    workers = [Worker(table_name) for table_name in table_names]
+    workers = [Worker.remote(table_name) for table_name in table_names]
 
     sweep_id = None
     if args.sweep_config is not None:

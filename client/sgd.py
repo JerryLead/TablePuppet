@@ -14,7 +14,10 @@ from model import Linear, MLP
 from dataset import CustomDataset
 import client.base
 
+import ray
 
+
+@ray.remote(num_gpus=0.2)
 class Worker(client.base.Worker):
     def init(self):
         self.n = self.train_data.shape[1]
@@ -130,3 +133,13 @@ class Worker(client.base.Worker):
         if not self.args.use_DP:
             return None
         return self.privacy_engine.get_epsilon(self.args.DP_delta)
+    
+    def get_embedding(self):
+        return self.embedding
+    
+    def set_inverse_indices(self, inverse_indices):
+        self.inverse_indices = inverse_indices
+
+
+    def receive_embedding_grad(self, grad):
+        self.embedding.grad = grad

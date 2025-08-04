@@ -25,6 +25,21 @@ class Worker:
         self.train_meta = self.dataset.extract_meta(self.table_name, self.train_df)
         self.test_meta = self.dataset.extract_meta(self.table_name, self.test_df)
 
+    def get_table_name(self):
+        return self.table_name
+
+    def get_train_meta(self):
+        return self.train_meta
+    
+    def get_test_meta(self):
+        return self.test_meta
+    
+    def get_train_data(self):
+        return self.train_data
+    
+    def get_test_data(self):
+        return self.test_data
+
     def set_args(self, args):
         self.args = args
         self.device = torch.device("cuda" if args.use_GPU else "cpu")

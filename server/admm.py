@@ -5,6 +5,8 @@ from torcheval.metrics import BinaryAUROC
 from loguru import logger
 import server.base
 
+from util.ray_utils import ray_group_call, ray_group_call_multiargs
+
 
 class Server(server.base.Server):
     def init(self):
@@ -16,20 +18,28 @@ class Server(server.base.Server):
         if self.args.simulate_VFL_ADMM:
             self.G = self.aligned_G.copy()
             self.test_G = self.aligned_test_G.copy()
-            for i, worker in enumerate(self.workers):
-                self.G[i], self.test_G[i] = worker.align(
-                    self.G[i],
-                    self.test_G[i],
-                    train_idx=self.f[:, i + 1],
-                    test_idx=self.test_f[:, i + 1],
-                )
-                worker.init()
+
+            align_args = [
+                (self.G[i], self.test_G[i], self.f[:, i + 1], self.test_f[:, i + 1])
+                for i in range(len(self.workers))
+            ]
+            align_results = ray_group_call_multiargs(self.workers, "align", align_args)
+            self.G, self.test_G = zip(*align_results)
+            self.G = list(self.G)
+            self.test_G = list(self.test_G)
+
+            ray_group_call(self.workers, "init")
         else:
             self.G = self.original_G.copy()
             self.test_G = self.original_test_G.copy()
-            for i, worker in enumerate(self.workers):
-                self.G[i], self.test_G[i] = worker.align(self.G[i], self.test_G[i])
-                worker.init()
+
+            align_args = [(self.G[i], self.test_G[i]) for i in range(len(self.workers))]
+            align_results = ray_group_call_multiargs(self.workers, "align", align_args)
+            self.G, self.test_G = zip(*align_results)
+            self.G = list(self.G)
+            self.test_G = list(self.test_G)
+
+            ray_group_call(self.workers, "init")
         if self.task == "classification":
             self.z = torch.zeros(
                 (self.M, self.C), requires_grad=True, device=self.device
@@ -61,9 +71,9 @@ class Server(server.base.Server):
                     self.G[i][j]
                 ].sum(axis=0)
         logger.info("Begin x-update")
-        for i in range(self.N):
-            self.workers[i].update_organization_model(self.Y[i], rho)
-        T_x = [self.workers[i].logits() for i in range(self.N)]
+        update_args = [(Y_i, rho) for Y_i in self.Y]
+        ray_group_call_multiargs(self.workers, "update_organization_model", update_args)
+        T_x = ray_group_call(self.workers, "logits")
         self.A_x = [self._map_T_x_to_A_x(T_x[i], self.G[i]) for i in range(self.N)]
         self.h = np.sum(self.A_x, axis=0)
 
@@ -154,7 +164,7 @@ class Server(server.base.Server):
         return rmse_loss
 
     def test(self):
-        self.test_T_x = [self.workers[i].logits("test") for i in range(self.N)]
+        self.test_T_x  = ray_group_call(self.workers, "logits", "test")
         self.test_A_x = [
             self._map_T_x_to_A_x(self.test_T_x[i], self.test_G[i], mode="test")
             for i in range(self.N)

@@ -5,6 +5,7 @@ import time
 import wandb
 
 from util.label_privacy_engine import RandomizedLabelPrivacy
+from util.ray_utils import ray_group_call
 
 
 class Server:
@@ -17,15 +18,13 @@ class Server:
         self.dataset = dataset
         self.task = self.dataset.task
         self.C = self.dataset.num_class
-        for worker in self.workers:
-            worker.load_data(self.dataset, data_path)
+        ray_group_call(self.workers, "load_data", self.dataset, data_path)
 
     def set_args(self, args):
         self.args = args
         self.device = torch.device("cuda" if args.use_GPU else "cpu")
         logger.info("Using device: {}".format(self.device))
-        for worker in self.workers:
-            worker.set_args(args)
+        ray_group_call(self.workers, "set_args", args)
 
     def _noise(self, label, n):
         onehot = torch.zeros(n).to()
@@ -49,16 +48,19 @@ class Server:
         logger.info(f"Begin building {type} mapping")
         table_meta = {}
         label = None
-        for i in range(self.N):
-            table_name = self.workers[i].table_name
-            if type == "train":
-                table_meta[table_name], b = self.workers[i].train_meta
-                if b is not None:
-                    label = b
-            elif type == "test":
-                table_meta[table_name], b = self.workers[i].test_meta
-                if b is not None:
-                    label = b
+
+        table_names = ray_group_call(self.workers, "get_table_name")
+
+        if type == "train":
+            meta_b_list = ray_group_call(self.workers, "get_train_meta")
+        else:
+            meta_b_list = ray_group_call(self.workers, "get_test_meta")
+
+        for tname, (meta, b) in zip(table_names, meta_b_list):
+            table_meta[tname] = meta
+            if b is not None:
+                label = b
+
         f, G, table_index_mapping = self.dataset.build_mapping(table_meta)
         label = label[table_index_mapping[list(self.dataset.label_info.keys())[0]]]
         return f, G, label
@@ -100,8 +102,8 @@ class Server:
             }
             if self.args.use_DP:
                 privacy_budget = 0
-                for worker in self.workers:
-                    privacy_budget = max(privacy_budget, worker.get_privacy_budget())
+                privacy_budgets = ray_group_call(self.workers, "get_privacy_budget")
+                privacy_budget = max(privacy_budgets)
                 item["privacy_budget"] = privacy_budget
                 final_privacy_budget = privacy_budget
             if self.task == "classification":

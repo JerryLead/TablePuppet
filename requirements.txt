@@ -6,3 +6,4 @@ scikit_learn==1.3.0
 torch==2.0.1
 wandb==0.15.5
 torcheval==0.0.7
+ray[default]
